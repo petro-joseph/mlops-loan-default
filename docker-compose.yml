@@ -72,7 +72,7 @@ services:
       API_URL: http://api:8000
     volumes:
       - ./src:/app/src
-      - ./data:/app/data      # cached dataset download
+      - ./dataset:/app/dataset:ro
     depends_on:
       - mlflow
     profiles: ["jobs"]

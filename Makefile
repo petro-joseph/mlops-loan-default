@@ -19,6 +19,7 @@ staging-up:   ; $(TF) init -input=false >/dev/null && ($(TF) workspace select st
 staging-plan: ; $(TF) workspace select staging && $(TF) plan
 staging-down: ; $(TF) workspace select staging && $(TF) destroy
 staging-predict: ; curl -s -X POST localhost:8100/predict -H 'Content-Type: application/json' -d @examples/loan.json; echo
+test:      ; docker run --rm -v "$$PWD":/w -w /w python:3.12-slim sh -c "pip install -q -r requirements.txt -r requirements-dev.txt 2>/dev/null && ruff check . && pytest -q"
 alerts:    ; curl -s localhost:9090/api/v1/alerts | python3 -c "import json,sys; [print(a['state'].upper(), a['labels']['alertname'], '-', a['annotations']['summary']) for a in json.load(sys.stdin)['data']['alerts']] or print('no alerts')"
 
-.PHONY: up down build train status promote rollback serve predict health metrics monitor traffic drift alerts staging-up staging-plan staging-down staging-predict
+.PHONY: up down build train status promote rollback serve predict health metrics monitor traffic drift alerts staging-up staging-plan staging-down staging-predict test

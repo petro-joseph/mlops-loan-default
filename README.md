@@ -3,7 +3,8 @@
 A small, complete practice of the operational side of machine learning: tracking
 experiments, versioning models in a registry, promoting through a quality gate,
 and rolling back. The model is a loan-default classifier on the public
-[German Credit](https://www.openml.org/d/31) dataset (1,000 loans).
+[German Credit](https://www.openml.org/d/31) dataset (1,000 loans), kept in
+[`dataset/`](dataset/README.md) so training is reproducible offline.
 
 The model itself is deliberately simple. The point is the controls around it.
 
@@ -26,7 +27,7 @@ train ──> registered version (vN) ──promote --to staging──> @staging
 ```
 
 - **Every run is traceable:** parameters, validation metrics (AUC, F1,
-  accuracy), git commit, and the data it saw (source, row count, content hash).
+  accuracy), git commit, and the data it saw (dataset file SHA-256, row count).
 - **Registering is not deploying.** Training only adds a new version.
 - **Deployment = moving the `production` alias.** Consumers load
   `models:/loan-default@production`, so promotion and rollback copy no files.
@@ -129,6 +130,27 @@ Prometheus container by hand makes `plan` show exactly that one resource to
 create, and `apply` restores it. Images are rebuilt only when the Dockerfile,
 requirements or `src/*.py` change (`triggers.source`).
 
+## CI (GitHub Actions)
+
+Every push and pull request runs four jobs (`.github/workflows/ci.yml`):
+
+| Job | What it checks |
+|---|---|
+| Lint and unit tests | `ruff`; `pytest` covers the quality gate rules, the PSI maths, and the API (with a stand-in model, no MLflow needed) |
+| Model quality gate | trains the candidate (`train.py` defaults) against a throwaway registry, then `check_quality.py` fails the build if its `val_auc` is below 0.70 or more than 0.01 below `quality/baseline.json`; the comparison is written to the run summary |
+| Terraform | `fmt -check` and `validate` |
+| Image | the service image builds |
+
+The gate rules live in one place, `src/gate.py`, used by both CI and
+`registry.py promote`. CI never touches the real registry: it proves a change
+doesn't make the model worse, and promotion stays a separate, recorded decision.
+The baseline is a file in the repo, so accepting a better model (raising it) is
+itself a reviewed change.
+
+```bash
+make test                  # lint + unit tests in a container, like CI
+```
+
 ## Run it
 
 ```bash
@@ -152,4 +174,4 @@ The MLflow UI listens on localhost only. From another machine:
 - [x] Serving: FastAPI container that follows `@production`, with Prometheus `/metrics`
 - [x] Monitoring: Prometheus alerts, Grafana dashboard, PSI drift check against training data
 - [x] Infrastructure as Code: a staging environment defined in Terraform
-- [ ] CI: tests, and a pipeline that blocks promotion on a quality regression
+- [x] CI: lint, unit tests, a model-quality gate against a committed baseline, Terraform checks, image build

@@ -11,8 +11,8 @@ the version tested in staging is byte-for-byte the one promoted to production.
     python src/registry.py rollback                 # production back to its previous version
     python src/registry.py rollback --alias staging
 
-Quality gate (both aliases): the candidate's val_auc must be at least MIN_AUC
-and no more than TOLERANCE below the current production version. A rollback
+Quality gate (both aliases, rules in gate.py): the candidate's val_auc must be
+at least MIN_AUC and no more than TOLERANCE below the current production version. A rollback
 skips the gate: it returns to a version that already passed it.
 """
 import argparse
@@ -23,10 +23,10 @@ from datetime import datetime, timezone
 from mlflow import MlflowClient
 from mlflow.exceptions import MlflowException
 
+from gate import gate_problems
+
 MODEL_NAME = "loan-default"
 ALIASES = ["staging", "production"]
-MIN_AUC = 0.70
-TOLERANCE = 0.01
 
 client = MlflowClient()
 
@@ -73,11 +73,7 @@ def status(_):
 def promote(args):
     v, alias, prod = str(args.version), args.to, current("production")
     cand = auc(v)
-    problems = []
-    if cand < MIN_AUC:
-        problems.append(f"val_auc {cand:.3f} < minimum {MIN_AUC}")
-    if prod and cand < auc(prod) - TOLERANCE:
-        problems.append(f"val_auc {cand:.3f} worse than production v{prod} ({auc(prod):.3f})")
+    problems = gate_problems(cand, auc(prod) if prod else None, f"production v{prod}")
     if problems and not args.force:
         sys.exit("BLOCKED: " + "; ".join(problems) + "  (use --force to override)")
     if v == current(alias):

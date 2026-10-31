@@ -1,0 +1,5 @@
+{
+  "val_auc": 0.807,
+  "source": "v1/v4 in the registry: logreg, C=1.0, seed 42, dataset/german_credit.csv",
+  "note": "Raise this only in a reviewed change, when a better model is accepted."
+}
