@@ -1,0 +1,29 @@
+services:
+  # Tracking server + model registry. SQLite holds runs and the registry;
+  # artifacts (the saved models) are served through the server, so clients
+  # never need direct access to the artifact store.
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.17.2
+    command: >-
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts --serve-artifacts
+    ports:
+      - "127.0.0.1:5000:5000"   # local only; view it through an SSH tunnel
+    volumes:
+      - ./mlruns:/mlflow
+    restart: unless-stopped
+
+  # One-off jobs: training and registry commands.
+  trainer:
+    build: .
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      GIT_SHA: ${GIT_SHA:-unknown}
+      PROMOTED_BY: ${USER:-unknown}   # who moved the alias, for the audit trail
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data      # cached dataset download
+    depends_on:
+      - mlflow
+    profiles: ["jobs"]
