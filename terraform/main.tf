@@ -28,7 +28,9 @@ locals {
   env  = terraform.workspace
   root = abspath("${path.module}/..")
 
-  # Host ports per environment. Production's 8000/9090 belong to Compose.
+  # Host ports per environment; the workspace must be one of these keys
+  # ("Invalid index" means: terraform workspace select staging).
+  # Production's 8000/9090 belong to Compose.
   ports = {
     staging = { api = 8100, prometheus = 9190 }
   }
@@ -38,13 +40,6 @@ locals {
     for f in sort(concat(["Dockerfile", "requirements.txt"], tolist(fileset(local.root, "src/*.py")))) :
     filesha1("${local.root}/${f}")
   ]))
-}
-
-check "known_environment" {
-  assert {
-    condition     = contains(keys(local.ports), local.env)
-    error_message = "Select an environment workspace first: terraform workspace select staging"
-  }
 }
 
 # The network Compose created; MLflow is reachable on it as http://mlflow:5000.

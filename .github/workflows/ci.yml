@@ -45,6 +45,8 @@ jobs:
   terraform:
     name: Terraform format and validate
     runs-on: ubuntu-latest
+    env:
+      TF_WORKSPACE: staging   # validate the environment that exists, not "default"
     defaults:
       run:
         working-directory: terraform
