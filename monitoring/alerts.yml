@@ -1,0 +1,48 @@
+# Platform alerts go to whoever runs the service; drift alerts go to the model
+# owner, because shifted inputs are a model-risk question, not an outage.
+groups:
+  - name: loan-api
+    rules:
+      - alert: LoanApiDown
+        expr: up{job="loan-api"} == 0
+        for: 1m
+        labels: { severity: critical, owner: platform }
+        annotations:
+          summary: "Loan scoring API is not answering Prometheus"
+
+      - alert: LoanApiErrors
+        expr: |
+          sum(rate(loan_api_requests_total{path="/predict",status=~"5.."}[5m]))
+            / sum(rate(loan_api_requests_total{path="/predict"}[5m])) > 0.05
+        for: 5m
+        labels: { severity: critical, owner: platform }
+        annotations:
+          summary: "More than 5% of predictions are failing"
+
+      - alert: LoanApiSlow
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(loan_api_request_seconds_bucket{path="/predict"}[5m]))) > 0.5
+        for: 5m
+        labels: { severity: warning, owner: platform }
+        annotations:
+          summary: "95th percentile prediction latency above 500 ms"
+
+      - alert: LoanModelReloadFailing
+        expr: increase(loan_model_reloads_total{result="failed"}[10m]) > 0
+        labels: { severity: warning, owner: platform }
+        annotations:
+          summary: "A promoted model version failed to load; the previous one is still serving"
+
+      - alert: LoanInputDrift
+        expr: max(loan_feature_psi) > 0.25
+        for: 2m
+        labels: { severity: warning, owner: model }
+        annotations:
+          summary: "Applicants no longer look like the training data (PSI > 0.25)"
+
+      - alert: LoanScoreDrift
+        expr: loan_score_psi > 0.25
+        for: 2m
+        labels: { severity: warning, owner: model }
+        annotations:
+          summary: "Predicted default probabilities have shifted from validation"

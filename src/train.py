@@ -1,15 +1,19 @@
 """Train a loan-default model, track the run in MLflow and register it.
 
 Every run logs its parameters, validation metrics and the exact data it saw
-(row count + content hash), then registers the model as a new version of
-`loan-default`. Registering does not deploy: only `registry.py promote`
+(row count + content hash), plus `reference.json`: the training distribution
+of every feature and of the validation scores, which serving compares live
+traffic against to detect drift. It then registers the model as a new version
+of `loan-default`. Registering does not deploy: only `registry.py promote`
 moves the `production` alias.
 
     python src/train.py --model logreg --C 1.0
     python src/train.py --model rf --n-estimators 300 --max-depth 8
 """
 import argparse
+import json
 import os
+import tempfile
 
 import mlflow
 import pandas as pd
@@ -22,6 +26,8 @@ from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+from drift import SCORE_EDGES, profile
 
 MODEL_NAME = "loan-default"
 EXPERIMENT = "loan-default"
@@ -81,6 +87,16 @@ def main():
             "val_accuracy": accuracy_score(y_val, pred),
         }
         mlflow.log_metrics(metrics)
+
+        reference = {
+            "features": {col: profile(X_tr[col]) for col in X_tr.columns},
+            "score": profile(pd.Series(proba), edges=SCORE_EDGES),
+        }
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "reference.json")
+            with open(path, "w") as f:
+                json.dump(reference, f)
+            mlflow.log_artifact(path)
 
         info = mlflow.sklearn.log_model(
             pipe, "model",
