@@ -15,12 +15,13 @@ The model itself is deliberately simple. The point is the controls around it.
 | Training | scikit-learn pipeline (scaling + one-hot + classifier) |
 | Serving | FastAPI + Uvicorn, Prometheus metrics |
 | Monitoring | Prometheus 2.55 (scrape + alert rules), Grafana 11 (provisioned dashboard), PSI drift check |
-| Runtime | Docker Compose; Python 3.12 inside the containers |
+| Runtime | Docker Compose (registry + production); Terraform 1.9 with the Docker provider (staging); Python 3.12 inside the containers |
 
 ## Lifecycle
 
 ```
-train ──> registered version (vN) ──promote (quality gate)──> @production
+train ──> registered version (vN) ──promote --to staging──> @staging     (Terraform-built environment, :8100)
+                                   ──promote (quality gate)─> @production  (Compose, :8000)
                                      <──────rollback─────────
 ```
 
@@ -104,6 +105,30 @@ from 39% to 78%, and both drift alerts fired.
 Versions trained before this step (v1-v3) have no `reference.json`; the API
 still serves them, with drift metrics off.
 
+## Environments (Terraform)
+
+Production and the shared MLflow registry run under Docker Compose. Staging is
+defined in `terraform/` and created with Terraform: its own API (serving the
+`staging` alias) and its own Prometheus, on the same network as the registry.
+Every environment reads the same registry, so the version tested in staging is
+byte-for-byte the one promoted to production; only the alias differs.
+
+The Terraform workspace is the environment, with its own state. Ports per
+environment live in `locals.ports`; adding one (say `test`) is one line there.
+
+```bash
+make staging-up                    # terraform init + workspace staging + apply (asks for "yes")
+make promote V=4 ARGS="--to staging"
+make staging-predict               # staging API on 127.0.0.1:8100; Prometheus on :9190
+make staging-plan                  # "No changes": what is running matches the code
+make staging-down                  # terraform destroy; production is untouched
+```
+
+Checked on the AWS server: a second `plan` reports no changes; deleting the staging
+Prometheus container by hand makes `plan` show exactly that one resource to
+create, and `apply` restores it. Images are rebuilt only when the Dockerfile,
+requirements or `src/*.py` change (`triggers.source`).
+
 ## Run it
 
 ```bash
@@ -112,7 +137,7 @@ make build
 make train ARGS="--model logreg --C 1.0"            # -> v1
 make train ARGS="--model rf --n-estimators 300 --max-depth 8"   # -> v2
 make status
-make promote V=1
+make promote V=1                                    # production (default)
 make promote V=2
 make rollback                                       # production back to v1
 ```
@@ -126,5 +151,5 @@ The MLflow UI listens on localhost only. From another machine:
 - [x] Promotion with a quality gate, rollback, audit trail
 - [x] Serving: FastAPI container that follows `@production`, with Prometheus `/metrics`
 - [x] Monitoring: Prometheus alerts, Grafana dashboard, PSI drift check against training data
-- [ ] Infrastructure as Code: the stack defined in Terraform
+- [x] Infrastructure as Code: a staging environment defined in Terraform
 - [ ] CI: tests, and a pipeline that blocks promotion on a quality regression

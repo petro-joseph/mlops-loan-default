@@ -1,6 +1,7 @@
-"""Serve the production model over HTTP, with Prometheus metrics.
+"""Serve one environment's model over HTTP, with Prometheus metrics.
 
-Loads `models:/loan-default@production` at start-up, then checks the alias every
+MODEL_ALIAS picks the environment: `production` (default) or `staging`.
+Loads `models:/loan-default@<alias>` at start-up, then checks the alias every
 RELOAD_SECONDS. When it moves (a promotion or a rollback), the new version is
 loaded and swapped in without a restart. If a load fails, the version already
 in memory keeps serving and the failure is counted.
@@ -33,7 +34,7 @@ from pydantic import BaseModel, Field
 from drift import psi
 
 MODEL_NAME = "loan-default"
-ALIAS = "production"
+ALIAS = os.environ.get("MODEL_ALIAS", "production")
 RELOAD_SECONDS = int(os.environ.get("RELOAD_SECONDS", "30"))
 THRESHOLD = 0.5  # probability of default at or above this -> refer to a credit officer
 DRIFT_WINDOW = int(os.environ.get("DRIFT_WINDOW", "500"))
@@ -77,7 +78,7 @@ def load_production():
     state.update(model=model, version=mv.version, columns=columns, reference=reference)
     VERSION.set(int(mv.version))
     RELOADS.labels("ok").inc()
-    print(f"serving {MODEL_NAME} v{mv.version}", flush=True)
+    print(f"serving {MODEL_NAME}@{ALIAS} v{mv.version}", flush=True)
 
 
 async def watch_alias():
@@ -148,7 +149,7 @@ class ScoreRequest(BaseModel):
 def health():
     if state["model"] is None:
         return JSONResponse({"status": "no model loaded"}, status_code=503)
-    return {"status": "ok", "model": MODEL_NAME, "version": state["version"]}
+    return {"status": "ok", "model": MODEL_NAME, "alias": ALIAS, "version": state["version"]}
 
 
 @app.post("/predict")
