@@ -8,6 +8,33 @@ and rolling back. The model is a loan-default classifier on the public
 
 The model itself is deliberately simple. The point is the controls around it.
 
+## Try it in one command
+
+Needs Docker with the Compose plugin (and `make`). Everything runs in containers;
+nothing is installed on your machine.
+
+```bash
+git clone https://github.com/petro-joseph/mlops-loan-default
+cd mlops-loan-default
+make demo
+```
+
+`make demo` builds the images, starts MLflow, the API, Prometheus and Grafana,
+trains a model, promotes it to production through the quality gate, waits until
+the API serves it, scores a sample loan and prints the links:
+
+| Open | URL |
+|---|---|
+| MLflow: runs and the model registry | http://localhost:5000 |
+| Grafana: the service dashboard | http://localhost:3001 |
+| Prometheus: alert rules | http://localhost:9090/alerts |
+| API docs: try `/predict` in the browser | http://localhost:8000/docs |
+
+Then `make traffic` (normal traffic), `make drift` (shifted traffic; the drift
+alerts fire within a few minutes) and `make down` to stop. If a port is taken,
+override it: `API_PORT=18000 GRAFANA_PORT=3002 make demo` (also `MLFLOW_PORT`,
+`PROMETHEUS_PORT`).
+
 ## Stack
 
 | Piece | Tool |
